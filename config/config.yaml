@@ -1,0 +1,24 @@
+# sources1: 80
+# sources2: 75
+# shared: 10
+seed: 1
+index: 5
+ica: false
+optim:
+  lr: 1e-2
+  batch_size: 100
+  epochs: 5000
+  eps: 0.002
+file: "log"
+T: 10
+l: 0.9  # this is the glasso
+r: 0.1 # this is for the alignment penalty
+data_file: ['data/dataset2.csv','data/dataset1.csv'] # '/var/scratch/tpandeva/siica/data/dataset1.csv'
+alias: "X12_test"
+k: [68, 46] # 68 for dataset2, 46 for dataset1, 151 for dataset 3
+runs: 100
+whiten: false
+reduction: false
+start: 0
+end: 10
+scaling: true
