@@ -1,11 +1,12 @@
 #!/bin/bash
-#SBATCH --cpus-per-task=30
+#SBATCH --cpus-per-task=40
 #SBATCH --time 24:00:00
 #SBATCH --ntasks=1
 #SBATCH --job-name=bash
 #SBATCH --output=log.out
 #SBATCH --verbose
 #SBATCH --ntasks-per-node=1
+#SBATCH --mem-per-cpu=1000
 module load gnu12
 module load R
 
