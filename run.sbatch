@@ -9,6 +9,7 @@
 module load gnu12
 module load R
 
+cd /home/tpandev
 source activate mvtlasso
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
