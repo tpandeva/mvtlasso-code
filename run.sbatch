@@ -6,7 +6,6 @@
 #SBATCH --output=log.out
 #SBATCH --verbose
 #SBATCH --ntasks-per-node=1
-#SBATCH --constraint=cpunode
 module load gnu12
 module load R
 
