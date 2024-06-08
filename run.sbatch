@@ -5,7 +5,7 @@
 #SBATCH --verbose                     # Verbose output
 #SBATCH --ntasks=1                  # Number of tasks (processes)
 #SBATCH --cpus-per-task=30           # Number of CPUs per task
-#SBATCH --mem=18g
+#SBATCH --mem=30g
 
 module load gnu12
 module load R
