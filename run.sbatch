@@ -17,7 +17,5 @@ source mvtlasso/bin/activate
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 for i in {0..9}
 do
-s=$(($2+$i))
-e=$(($2+$i+1))
-srun --exclusive -N1 -n1 python3.11 runICATLASSO_jgl_mu.py l=$1  alias="X12_joint_all_mus_reduction_scaling" start=$2 end=$e
+    srun --exclusive -N1 -n1 python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$(($2+$i)) end=$(($2+$i+1))
 done
