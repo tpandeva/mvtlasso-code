@@ -15,4 +15,4 @@ source mvtlasso/bin/activate
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
-python3.11 runICATLASSO_jgl_mu.py
+python3.11 runICATLASSO_jgl_mu.py  l=0.5
