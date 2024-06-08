@@ -14,5 +14,5 @@ cd /home/tpandev
 source mvtlasso/bin/activate
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
-
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$2 end=$(($2+1))
+e=$(($2+1))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$2 end=$e
