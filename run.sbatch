@@ -3,7 +3,7 @@
 #SBATCH --time 24:00:00
 #SBATCH --ntasks=1
 #SBATCH --job-name=bash
-#SBATCH --output=log.out
+#SBATCH --output=log_0.5.out
 #SBATCH --verbose
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem-per-cpu=1000
