@@ -5,7 +5,7 @@
 #SBATCH --verbose                     # Verbose output
 #SBATCH --ntasks=1                  # Number of tasks (processes)
 #SBATCH --cpus-per-task=4           # Number of CPUs per task
-#SBATCH --mem-per-cpu=MaxMemPerCPU   # Replace MAX_MEM with the maximum memory per CPU
+#SBATCH --mem-per-cpu=6g   # Replace MAX_MEM with the maximum memory per CPU
 
 module load gnu12
 module load R
