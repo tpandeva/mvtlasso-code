@@ -17,21 +17,14 @@ export LD_LIBRARY_PATH=/opt/ohpc/pub/libs/gnu12/R/4.2.1/lib64/R/lib:$LD_LIBRARY_
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
-for i in {0..2}
+for i in 6 7
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
 python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
 done
 wait
-for i in {3..5}
-do
-s=$(($i+$2))
-e=$(($2+$i+1))
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
-done
-wait
-for i in {6..9}
+for i in 8 9
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
