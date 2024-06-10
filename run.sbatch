@@ -5,8 +5,8 @@
 #SBATCH --error=err_%j.err
 #SBATCH --verbose                     # Verbose output
 #SBATCH --ntasks=1                  # Number of tasks (processes)
-#SBATCH --cpus-per-task=8           # Number of CPUs per task
-#SBATCH --mem=16g
+#SBATCH --cpus-per-task=30           # Number of CPUs per task
+#SBATCH --mem=30g
 
 module load gnu12
 module load R
@@ -17,14 +17,32 @@ export LD_LIBRARY_PATH=/opt/ohpc/pub/libs/gnu12/R/4.2.1/lib64/R/lib:$LD_LIBRARY_
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
+for i in {0..2}
+do
+s=$(($i+$2))
+e=$(($2+$i+1))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
+done
+wait
+for i in {3..5}
+do
+s=$(($i+$2))
+e=$(($2+$i+1))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
+done
+wait
+for i in 6 7 8
+do
+s=$(($i+$2))
+e=$(($2+$i+1))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
+done
+wait
 
-s=$((8+$2))
-e=$((9+$2))
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e &
-
-
-s=$((9+$2))
-e=$((10+$2))
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e &
-
+for i in 9
+do
+s=$(($i+$2))
+e=$(($2+$i+1))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e&
+done
 wait
