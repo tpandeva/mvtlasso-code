@@ -5,7 +5,7 @@
 #SBATCH --error=err_%j.err
 #SBATCH --verbose                     # Verbose output
 #SBATCH --ntasks=1                  # Number of tasks (processes)
-#SBATCH --cpus-per-task=4           # Number of CPUs per task
+#SBATCH --cpus-per-task=8           # Number of CPUs per task
 #SBATCH --mem=16g
 
 module load gnu12
@@ -19,10 +19,12 @@ cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
 
 s=$((8+$2))
-e=$((9+$i))
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e
-wait
+e=$((9+$2))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e &
+
 
 s=$((9+$2))
-e=$((10+$i))
-python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e
+e=$((10+$2))
+python3.11 runICATLASSO_jgl_mu.py l=$1 alias="X12_joint_all_mus_reduction_scaling" start=$s end=$e &
+
+wait
