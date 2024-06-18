@@ -285,7 +285,7 @@ def em_tlasso_noise_no_noise(Y, T, l,r, W0, glasso=False):
     return W, tausY
 
 
-def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False):
+def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False,with_mu=True):
     p = Y[0].shape[0]
     nu = 3
     k = Y[0].shape[1]
@@ -302,10 +302,11 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False):
         tausN = tau(N,3,p,muN,D, group=True)
         # M-step
         print("M-step")
-        muY = update_mu(Y, tausY)
-        muN = update_mu(N, tausN)
-        Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=True, group=True)
-        Nmuw, _, _ = update_Sigma_mu(N, tausN, mu=True, group=True)
+        if with_mu:
+            muY = update_mu(Y, tausY)
+            #muN = update_mu(N, tausN)
+        Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
+        Nmuw, _, _ = update_Sigma_mu(N, tausN, mu=False, group=True)
 
         Ymuw = np.vstack(Ymuw)
         print(abs(np.cov(Ymuw.T)).max())
@@ -317,7 +318,7 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False):
         #W = run_glasso(Ymuwcov , l)
         #W = [W , W ]
         W =  run_glasso(Dinv@Ymuwcov@Dinv,l)
-        W = [Dinv@W@Dinv, Dinv@W@Dinv]
+        W = [Dinv@W@Dinv,Dinv@W@Dinv]
         #D = np.diag(1/Ymuw.std(0)) # sqrt was added, why?
 
        # W=[D@W_cor@D,D@W_cor@D]
@@ -333,6 +334,100 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False):
         D = [np.diag(np.array([1/d_t[i]]*Nmuw[i].shape[1])) for i in range(len(N))]
         
     return W, D, tausY, tausN,muY,muN
+
+
+def em_tlasso_no_noise_with_mu(Y, T, l, W0, with_mu=True):
+    p = Y[0].shape[0]
+
+    muY = [np.array([0] * p) for i in range(len(Y))]
+
+    W = W0
+    for j in range(T):
+        print(f"Iteration: {j}")
+        # E-step
+        tausY = tau(Y, 3, p, muY, W, group=True)
+        # M-step
+        print("M-step")
+        if with_mu:
+            muY = update_mu(Y, tausY)
+            # muN = update_mu(N, tausN)
+        Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
+
+        Ymuw = np.vstack(Ymuw)
+        print(abs(np.cov(Ymuw.T)).max())
+        n = Ymuw.shape[0]
+        print(n)
+        Ymuwcov = (1 / (n - 1)) * Ymuw.T @ Ymuw  # np.cov(Ymuw.T)
+        D = np.sqrt(np.diag(Ymuwcov))
+        Dinv = np.linalg.inv(np.diag(D))
+        # W = run_glasso(Ymuwcov , l)
+        # W = [W , W ]
+        W = run_glasso(Dinv @ Ymuwcov @ Dinv, l)
+        W = [Dinv @ W @ Dinv, Dinv @ W @ Dinv]
+        # D = np.diag(1/Ymuw.std(0)) # sqrt was added, why?
+
+        # W=[D@W_cor@D,D@W_cor@D]
+        for i in range(len(Y)):
+            print("Max L", abs(W[i][W[i] != 0]).max(), "Min L", abs(W[i][W[i] != 0]).min())
+
+        # Nmuw=[(N[i]*np.sqrt(tausN[i])).T for i in range(len(N))]
+
+        # d_t is a scalar variance
+
+        # D_t is the inverse diagonal of d_t*I
+
+    return W, tausY, muY
+
+
+# def em_tlasso_noise_with_mu(Y, N, T, l, r, W0, D0, glasso=False, with_mu=True):
+#     p = Y[0].shape[0]
+#     nu = 3
+#     k = Y[0].shape[1]
+#     nk = N[0].shape[1]
+#     muY = [np.array([0] * p) for i in range(len(Y))]
+#     muN = [np.array([0] * p) for i in range(len(N))]
+#
+#     W = W0
+#     D = D0
+#     for j in range(T):
+#         print(f"Iteration: {j}")
+#         # E-step
+#         tausY = tau(Y, 3, p, muY, W, group=True)
+#         tausN = tau(N, 3, p, muN, D, group=True)
+#         # M-step
+#         print("M-step")
+#         if with_mu:
+#             muY = update_mu(Y, tausY)
+#             muN = update_mu(N, tausN)
+#         Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
+#         Nmuw, _, _ = update_Sigma_mu(N, tausN, mu=with_mu, group=True)
+#
+#         Ymuw = np.vstack(Ymuw)
+#         print(abs(np.cov(Ymuw.T)).max())
+#         n = Ymuw.shape[0]
+#         print(n)
+#         Ymuwcov = (1 / (n - 1)) * Ymuw.T @ Ymuw  # np.cov(Ymuw.T)
+#         D = np.sqrt(np.diag(Ymuwcov))
+#         Dinv = np.linalg.inv(np.diag(D))
+#         # W = run_glasso(Ymuwcov , l)
+#         # W = [W , W ]
+#         W = run_glasso(Dinv @ Ymuwcov @ Dinv, l)
+#         W = [Dinv @ W @ Dinv, Dinv @ W @ Dinv]
+#         # D = np.diag(1/Ymuw.std(0)) # sqrt was added, why?
+#
+#         # W=[D@W_cor@D,D@W_cor@D]
+#         for i in range(len(Y)):
+#             print("Max L", abs(W[i][W[i] != 0]).max(), "Min L", abs(W[i][W[i] != 0]).min())
+#
+#         # Nmuw=[(N[i]*np.sqrt(tausN[i])).T for i in range(len(N))]
+#
+#         # d_t is a scalar variance
+#         d_t = [(1 / Nmuw[i].shape[0] * Nmuw[i].shape[1]) * np.sum(Nmuw[i] ** 2) for i in range(len(N))]
+#
+#         # D_t is the inverse diagonal of d_t*I
+#         D = [np.diag(np.array([1 / d_t[i]] * Nmuw[i].shape[1])) for i in range(len(N))]
+#
+#     return W, D, tausY, tausN, muY, muN
 
 
 def em_tlasso_noise_jgl(Y, N, T, l, r, W0, D0, glasso=False):
