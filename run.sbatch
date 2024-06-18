@@ -21,21 +21,21 @@ for i in {0..2}
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
-python3.11 runTLASSO_simulated.py l=$1 alias="X_sim_tlasso" start=$s end=$e seed=$s&
+python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso" start=$s end=$e seed=$s&
 done
 wait
 for i in {3..5}
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
-python3.11 runTLASSO_simulated.py l=$1 alias="X_sim_tlasso" start=$s end=$e seed=$s&
+python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso" start=$s end=$e seed=$s&
 done
 wait
 for i in 6 7 8
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
-python3.11 runTLASSO_simulated.py l=$1 alias="X_sim_tlasso" start=$s end=$e seed=$s&
+python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso" start=$s end=$e seed=$s&
 done
 wait
 
@@ -43,6 +43,6 @@ for i in 9
 do
 s=$(($i+$2))
 e=$(($2+$i+1))
-python3.11 runTLASSO_simulated.py l=$1 alias="X_sim_tlasso" start=$s end=$e seed=$s&
+python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso" start=$s end=$e seed=$s&
 done
 wait
