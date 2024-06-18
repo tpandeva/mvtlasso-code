@@ -222,7 +222,6 @@ def fit_ica_tlasso(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scali
         adj_Wo=adj_Wi
         
         Tau = [np.diag(np.concatenate((tauZ[i],tauN[i]))) for i in range(num_views)]
-       
 
 
 
