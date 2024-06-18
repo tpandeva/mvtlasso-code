@@ -11,7 +11,7 @@ optim:
   eps: 0.002
 file: "log"
 T: 15
-l: 15 #max 0.3  # this is the glasso
+l: 0.3 #max 0.3  # this is the glasso
 r: 0.1 # this is for the alignment penalty
 data_file: ['data/dataset2.csv','data/dataset1.csv'] # '/var/scratch/tpandeva/siica/data/dataset1.csv'
 alias: "X12_sim"
