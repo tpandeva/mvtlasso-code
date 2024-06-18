@@ -212,7 +212,7 @@ def main(cfg) -> None:
 
 
         open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
-        pickle.dump( adj_em, open_file)
+        pickle.dump( [adj_em,adj], open_file)
         open_file.close()
 
 
