@@ -280,8 +280,8 @@ def main(cfg) -> None:
     reduction = cfg.reduction
     # 50 sources Sigma, 50 sources D, 100 genes
     n = 100
-    d1 = 50
-    d2 = 50
+    d1 = cfg.d1
+    d2 = cfg.d2
     Theta = np.eye(n)
     size = int(0.5 * n * (n - 1))
 
@@ -327,7 +327,9 @@ def main(cfg) -> None:
         A1 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
         A2 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
         # A[d1:,:] = 0.001*A[d1:,:]
-        X1 = S @ A1
+        X1 = Y1 @ A1
+        if d2 == 0:
+            X1 = S[:, :d1 // 2] @ A1
        # X2 = Y2 @ A2
         Xs = [X1]
 
