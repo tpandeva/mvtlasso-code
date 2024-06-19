@@ -236,7 +236,7 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         #     print(Z_np[i].std(0))
         #
 
-        L_t, D_t, tauZ, tauN, muY, muN = em_tlasso_noise_with_mu(Z_np,N_np, 1, l, L_t,D_t, with_mu=True)
+        L_t, D_t, tauZ, tauN, muY, muN = em_tlasso_noise_with_mu(Z_np,N_np, 1, l,r, L_t,D_t, with_mu=True)
 
         muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
         muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
