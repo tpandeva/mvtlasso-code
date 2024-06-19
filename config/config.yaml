@@ -15,7 +15,9 @@ l: 0.3 #max 0.3  # this is the glasso
 r: 0.1 # this is for the alignment penalty
 data_file: ['data/dataset2.csv','data/dataset1.csv'] # '/var/scratch/tpandeva/siica/data/dataset1.csv'
 alias: "X12_sim"
-k: [50] # 68 for dataset2, 46 for dataset1, 151 for dataset 3
+k: [38] # 68 for dataset2, 46 for dataset1, 151 for dataset 3
+d1: 76
+d2: 24
 runs: 100
 whiten: false
 reduction: false

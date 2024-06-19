@@ -131,8 +131,8 @@ def main(cfg) -> None:
     reduction = cfg.reduction
     # 50 sources Sigma, 50 sources D, 100 genes
     n = 100
-    d1 = 50
-    d2 = 20
+    d1 = cfg.d1
+    d2 = cfg.d2
     Theta = np.eye(n)
     size = int(0.5 * n * (n - 1))
 
@@ -172,15 +172,16 @@ def main(cfg) -> None:
 
     for s in range(cfg.start,cfg.end):
         S = multivariate_t_rvs(np.array([0] * n), Sigma, df=3, n=d1).T
-        d2=d1
-        #Z = multivariate_t_rvs(np.array([0] * n), D, df=3, n=d2).T
-        #Y1 = np.concatenate((S[:, :d1 // 2], Z[:, :d2 // 2]), axis=1)
+        Z = multivariate_t_rvs(np.array([0] * n), D, df=3, n=d2).T
+        Y1 = np.concatenate((S[:, :d1 // 2], Z[:, :d2 // 2]), axis=1)
         #Y2 = np.concatenate((S[:, d1 // 2:], Z[:, d2 // 2:]), axis=1)
         A1 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
         #A2 = np.random.normal(loc=1, scale=1.0, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
 
         # A[d1:,:] = 0.001*A[d1:,:]
-        X1 = S @ A1
+        X1 = Y1 @ A1
+        if d2 == 0:
+            X1 = S[:, :d1 // 2] @ A1
         #X2 = Y2 @ A2
         Xs = [X1]
 
@@ -208,7 +209,7 @@ def main(cfg) -> None:
 
 
 
-        
+
 
 
         open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
