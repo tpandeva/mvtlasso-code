@@ -116,7 +116,7 @@ def whiten(X,n_components):
     return K,Kinv, XT
 
 
-def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scaling=True):
+def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scaling=True, corr=True):
     np.random.seed(seed)
     num_views = len(ks)
 
@@ -176,7 +176,9 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
             # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
             adj_Wo = adj_Wi
             # L_t, D_t, tauZ, tauN, muY, muN
-            L_t, D_t, tauZ, tauN, muY, muN = em_tlasso_noise_with_mu(S_all, Z_all, 1, l,r, L_t, D_t, glasso=True, with_mu=True)
+            L_old = L_t[0].copy()
+            L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(S_all, Z_all, 1, l,r, L_t, D_t, glasso=True, with_mu=True, corr=corr)
+            print("Max eig",np.linalg.eigvals(L_t[0].copy()-L_old[0].copy())[0])
             muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
             muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
 
@@ -235,8 +237,10 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         #     print(models[i].Q.weight)
         #     print(Z_np[i].std(0))
         #
+        L_old = L_t[0].copy()
+        L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(Z_np,N_np, 1, l,r, L_t,D_t, with_mu=True, corr=corr)
+        #print("Max eig", np.linalg.eigvals(L_t[0].copy() - L_old[0].copy())[0])
 
-        L_t, D_t, tauZ, tauN, muY, muN = em_tlasso_noise_with_mu(Z_np,N_np, 1, l,r, L_t,D_t, with_mu=True)
 
         muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
         muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
@@ -252,12 +256,14 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         adj_Wo = adj_Wi
 
         Tau = [np.diag(np.concatenate((tauZ[i],tauN[i]))) for i in range(num_views)]
+        if is_converged:
+            break
         #Tau = [np.diag(tauY[i]) for i in range(num_views)]
-
+    if scaling: print(print(models[i].W.weight))
     return L_t
 
 
-def fit_ica_tlasso_no_noise(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scaling=True):
+def fit_ica_tlasso_no_noise(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scaling=True, corr=True):
     np.random.seed(seed)
     num_views = len(ks)
 
@@ -319,7 +325,7 @@ def fit_ica_tlasso_no_noise(Xs, ks, device, T, l,r, to_whiten, seed=1, params=No
             #print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
             adj_Wo=adj_Wi
             # L_t, D_t, tauZ, tauN, muY, muN
-            L_t, tauY, muY = em_tlasso_no_noise_with_mu(S_all,  1, l, L_t, with_mu=True) #L_t, D_t, glasso=True, with_mu=True
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(S_all,  1, l, L_t, with_mu=True, corr=corr) #L_t, D_t, glasso=True, with_mu=True
             muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
 
@@ -375,14 +381,10 @@ def fit_ica_tlasso_no_noise(Xs, ks, device, T, l,r, to_whiten, seed=1, params=No
         Z_np = [models[i](Z[i]).detach().cpu().numpy()[:,:params[i]] for i in range(num_views)]
         #Z_np = Xws
         N_np = [models[i](Z[i]).detach().cpu().numpy()[:,params[i]:] for i in range(num_views)]
-        # for i in range(num_views):
-        #     print(models[i].W.weight)
-        #     print(models[i].Q.weight)
-        #     print(Z_np[i].std(0))
-        #
-        
-        L_t, tauY, muY = em_tlasso_no_noise_with_mu(Z_np, 1, l, L_t, with_mu=True)
-         
+
+        L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(Z_np, 1, l, L_t, with_mu=True)
+        if is_converged:
+            break
         muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
         #muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
 
@@ -419,13 +421,13 @@ def main(cfg) -> None:
     r=cfg.r
     reduction = cfg.reduction
     # 50 sources Sigma, 50 sources D, 100 genes
-    n = 100
+    n = cfg.n
     d1 = cfg.d1
     d2 = cfg.d2
     Theta = np.eye(n)
     size = int(0.5 * n * (n - 1))
 
-    D = 0.01 * np.eye(n)
+    D = cfg.sigma*np.eye(n)
     Theta[np.triu_indices(n, k=1)] = np.random.choice([-1, 0, 1], size=size, p=[0.01, 0.98, 0.01])
     Theta += Theta.T
     adj = Theta.copy()
@@ -458,7 +460,7 @@ def main(cfg) -> None:
     adj_em = [0,0]
     adj = pickle.load(open(os.path.join(script_dir,"data/adj_simulated.pickle"),"rb"))
 
-
+    tprs, fprs = [], []
     for s in range(cfg.start,cfg.end):
         S = multivariate_t_rvs(np.array([0] * n), Sigma, df=3, n=d1).T
         Z = multivariate_t_rvs(np.array([0] * n), D, df=3, n=d2).T
@@ -473,21 +475,24 @@ def main(cfg) -> None:
        # X2 = Y2 @ A2
         Xs = [X1]
 
-        Wi=fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling)
-
+        if d2 == 0:
+            Wi = fit_ica_tlasso_no_noise(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
+        else:
+            Wi = fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
 
         adj_Wi = [abs(Wi[i].copy()) for i in range(2)]
-        for i in range(2):
+        for i in range(1):
             adj_Wi[i][adj_Wi[i]!=0]=1
             print("Edges:", 0.5*(adj_Wi[i].sum()-adj_Wi[i].shape[0]),
                   "TPR:",((adj*adj_Wi[i]).sum()-adj_Wi[i].shape[0])/(adj.sum()-adj_Wi[i].shape[0]),
                   "FPR:",((adj_Wi[i]-adj_Wi[i]*adj).sum())/((1-adj).sum()))
-            adj_Wi[i] = coo_matrix(adj_Wi[i])
-
+            #adj_Wi[i] = coo_matrix(adj_Wi[i])
+            tprs.append(((adj*adj_Wi[i]).sum()-adj_Wi[i].shape[0])/(adj.sum()-adj_Wi[i].shape[0]))
+            fprs.append(((adj_Wi[i]-adj_Wi[i]*adj).sum())/((1-adj).sum()))
         adj_em= [adj_em[i]+adj_Wi[i] for i in range(2)]
         del Wi, adj_Wi
 
-        adj_em_eval = [adj_em[i].toarray().copy() for i in range(2)]
+        adj_em_eval = [adj_em[i].copy() for i in range(2)]
 
         for i in range(2):
             adj_em_eval[i][adj_em_eval[i]<adj_em_eval[i][0,0]/2] = 0
@@ -500,9 +505,9 @@ def main(cfg) -> None:
 
         
 
-
+        print(f"Mean TPR: {np.mean(np.array(tprs))}, Mean FPR: {np.mean(np.array(fprs))}")
         open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
-        pickle.dump( [adj_em,adj], open_file)
+        pickle.dump( [adj_em[0],tprs,fprs], open_file)
         open_file.close()
 
 

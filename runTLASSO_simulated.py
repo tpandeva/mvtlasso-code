@@ -100,14 +100,14 @@ def whiten(X,n_components):
 
 
 
-def fit_ica_tlasso(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scaling=True):
+def fit_ica_tlasso(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scaling=True, corr=True):
     np.random.seed(seed)
     num_views = 1
 
     L_t = [np.eye(Xs[i].shape[0]) for i in range(num_views)]
     D_t = [np.eye(Xs[i].shape[0]) for i in range(num_views)]
     
-    L_t, D_t, tauZ, tauN, muY, muN = em_tlasso_noise_with_mu(Xs, Xs, T, l,r, L_t, D_t,with_mu=True)
+    L_t, D_t, tauZ, tauN, muY, muN,_ = em_tlasso_noise_with_mu(Xs, Xs, T, l,r, L_t, D_t,with_mu=True,corr=corr)
 
     return L_t
 
@@ -130,13 +130,13 @@ def main(cfg) -> None:
     r=cfg.r
     reduction = cfg.reduction
     # 50 sources Sigma, 50 sources D, 100 genes
-    n = 100
+    n = cfg.n
     d1 = cfg.d1
     d2 = cfg.d2
     Theta = np.eye(n)
     size = int(0.5 * n * (n - 1))
 
-    D = 0.01 * np.eye(n)
+    D = cfg.sigma*np.eye(n)
     Theta[np.triu_indices(n, k=1)] = np.random.choice([-1, 0, 1], size=size, p=[0.01, 0.98, 0.01])
     Theta += Theta.T
     adj = Theta.copy()
@@ -169,7 +169,7 @@ def main(cfg) -> None:
     adj_em = [0,0]
     adj = pickle.load(open(os.path.join(script_dir,"data/adj_simulated.pickle"),"rb"))
 
-
+    tprs, fprs = [], []
     for s in range(cfg.start,cfg.end):
         S = multivariate_t_rvs(np.array([0] * n), Sigma, df=3, n=d1).T
         Z = multivariate_t_rvs(np.array([0] * n), D, df=3, n=d2).T
@@ -185,20 +185,23 @@ def main(cfg) -> None:
         #X2 = Y2 @ A2
         Xs = [X1]
 
-        Wi=fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling)
+        Wi=fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
 
 
         adj_Wi = [abs(Wi[i].copy()) for i in range(2)]
-        for i in range(2):
+        for i in range(1):
             adj_Wi[i][adj_Wi[i]!=0]=1
             print("Edges:", 0.5*(adj_Wi[i].sum()-adj_Wi[i].shape[0]),
+                  "TP:",0.5*((adj*adj_Wi[i]).sum()-adj_Wi[i].shape[0]),
                   "TPR:",((adj*adj_Wi[i]).sum()-adj_Wi[i].shape[0])/(adj.sum()-adj_Wi[i].shape[0]),
                   "FPR:",((adj_Wi[i]-adj_Wi[i]*adj).sum())/((1-adj).sum()))
-            adj_Wi[i] = coo_matrix(adj_Wi[i])
+            #adj_Wi[i] = coo_matrix(adj_Wi[i])
+            tprs.append(((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]) / (adj.sum() - adj_Wi[i].shape[0]))
+            fprs.append(((adj_Wi[i] - adj_Wi[i] * adj).sum()) / ((1 - adj).sum()))
         adj_em= [adj_em[i]+adj_Wi[i] for i in range(2)]
         del Wi, adj_Wi
 
-        adj_em_eval = [adj_em[i].toarray().copy() for i in range(2)]
+        adj_em_eval = [adj_em[i].copy() for i in range(2)]
 
         for i in range(2):
             adj_em_eval[i][adj_em_eval[i]<adj_em_eval[i][0,0]/2] = 0
@@ -212,8 +215,9 @@ def main(cfg) -> None:
 
 
 
+        print(f"Mean TPR: {np.mean(np.array(tprs))}, Mean FPR: {np.mean(np.array(fprs))}")
         open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
-        pickle.dump( [adj_em,adj], open_file)
+        pickle.dump( [adj_em[0],tprs,fprs], open_file)
         open_file.close()
 
 
