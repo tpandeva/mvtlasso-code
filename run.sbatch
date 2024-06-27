@@ -17,32 +17,9 @@ export LD_LIBRARY_PATH=/opt/ohpc/pub/libs/gnu12/R/4.2.1/lib64/R/lib:$LD_LIBRARY_
 
 cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
-for i in {0..2}
-do
-s=$(($i+$2))
-e=$(($2+$i+1))
-python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso_0.75" start=$s end=$e seed=$s k="[38]" d1=76 d2=24&
-done
-wait
-for i in {3..5}
-do
-s=$(($i+$2))
-e=$(($2+$i+1))
-python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso_0.75" start=$s end=$e seed=$s k="[38]" d1=76 d2=24&
-done
-wait
-for i in 6 7 8
-do
-s=$(($i+$2))
-e=$(($2+$i+1))
-python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso_0.75" start=$s end=$e seed=$s k="[38]" d1=76 d2=24&
-done
-wait
+s=0
+e=99
+python runICATLASSO_simulated.py l=$1 alias="X12_simulated_icatlasso_n_100" start=$s end=$e scaling=true corr=true n=100 d1=100 d2=0 k="[50]"&
+python runTLASSO_simulated.py l=$1 alias="X12_simulated_tlasso_n_100" start=$s end=$e scaling=true corr=true n=100 d1=100 d2=0 k="[50]"&
 
-for i in 9
-do
-s=$(($i+$2))
-e=$(($2+$i+1))
-python3.11 runICATLASSO_simulated.py l=$1 alias="X_sim_icatlasso_0.75" start=$s end=$e seed=$s k="[38]" d1=76 d2=24&
-done
 wait
