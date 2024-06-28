@@ -107,7 +107,7 @@ def fit_ica_tlasso(Xs, ks, device, T, l,r, to_whiten, seed=1, params=None, scali
     L_t = [np.eye(Xs[i].shape[0]) for i in range(num_views)]
     D_t = [np.eye(Xs[i].shape[0]) for i in range(num_views)]
     
-    L_t, D_t, tauZ, tauN, muY, muN,_ = em_tlasso_noise_with_mu(Xs, Xs, T, l,r, L_t, D_t,with_mu=True,corr=corr)
+    L_t, D_t, tauZ, tauN, muY, muN,_ = em_tlasso_noise_with_mu(Xs, Xs, T, l,r, L_t, D_t,with_mu=False,corr=corr)
 
     return L_t
 

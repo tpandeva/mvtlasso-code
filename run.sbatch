@@ -5,8 +5,8 @@
 #SBATCH --error=err_%j.err
 #SBATCH --verbose                     # Verbose output
 #SBATCH --ntasks=1                  # Number of tasks (processes)
-#SBATCH --cpus-per-task=30           # Number of CPUs per task
-#SBATCH --mem=30g
+#SBATCH --cpus-per-task=10           # Number of CPUs per task
+#SBATCH --mem=10g
 
 module load gnu12
 module load R
@@ -19,7 +19,7 @@ cd /zfs/ivi/causality/tpandeva/mvtlasso-code
 
 s=0
 e=99
-python runICATLASSO_simulated.py l=$1 alias="X12_simulated_icatlasso_n_100" start=$s end=$e scaling=true corr=true n=100 d1=100 d2=0 k="[50]"&
-python runTLASSO_simulated.py l=$1 alias="X12_simulated_tlasso_n_100" start=$s end=$e scaling=true corr=true n=100 d1=100 d2=0 k="[50]"&
+python runICATLASSO_simulated.py l=$1 alias="X12_simulated_icatlasso_n_100_no_scaling_no_corr" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
+python runTLASSO_simulated.py l=$1 alias="X12_simulated_tlasso_n_100_no_scaling_no_corr" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
 
 wait
