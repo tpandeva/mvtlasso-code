@@ -335,9 +335,7 @@ def em_tlasso_noise_no_noise(Y, T, l,r, W0, glasso=False):
 
 def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False,with_mu=True, corr=True):
     p = Y[0].shape[0]
-    nu = 3
-    k = Y[0].shape[1]
-    nk = N[0].shape[1]
+
     muY = [ np.array([0]*p) for i in range(len(Y))]
     muN = [ np.array([0]*p) for i in range(len(N))]
     
@@ -347,16 +345,16 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False,with_mu=True, cor
     for j in range(T):
         print(f"Iteration: {j}")
         # E-step 
-        tausY = tau(Y,3,p,muY,W0, group=True)
-        tausN = tau(N,3,p,muN,D0, group=True)
+        tausY = tau(Y,3,p,muY,W, group=True)
+        tausN = tau(N,3,p,muN,D, group=True)
         # M-step
         print("M-step")
         if with_mu:
             muY = update_mu(Y, tausY)
-            #muN = update_mu(N, tausN)
+            muN = update_mu(N, tausN)
         Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
-        Nmuw, _, _ = update_Sigma_mu(N, tausN, mu=with_mu, group=True)
-
+        #Nmuw, _, _ = update_Sigma_mu(N, tausN, mu=with_mu, group=True)
+        Nmuw =[((N[i]-muN[i].reshape((p,1)))*np.sqrt(tausN[i])).T for i in range(len(N))]
         Ymuw = np.vstack(Ymuw)
         print(abs(np.cov(Ymuw.T)).max())
         n = Ymuw.shape[0]
@@ -385,7 +383,7 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False,with_mu=True, cor
 
 
         # d_t is a scalar variance
-        d_t = [(1/Nmuw[i].shape[0]*Nmuw[i].shape[1])*np.sum(Nmuw[i]**2) for i in range(len(N))]
+        d_t = [(1/(Nmuw[i].shape[0]*Nmuw[i].shape[1]))*np.sum(Nmuw[i]**2) for i in range(len(N))]
         
         # D_t is the inverse diagonal of d_t*I
         D = [np.diag(np.array([1/d_t[i]]*Nmuw[i].shape[1])) for i in range(len(N))]
@@ -393,9 +391,7 @@ def em_tlasso_noise_with_mu(Y, N, T, l,r, W0, D0, glasso=False,with_mu=True, cor
         if abs(np.linalg.eigvals(W[0].copy() - W0[0].copy()).max())<=1e-4:
             is_converged=True
             break
-        # if np.linalg.eigvals(W[0]).min() < 0:
-        #     print("Detected a negative eigenvalue")
-        #     W[0] = nearestPD(W[0])
+
         W0 = [W[0].copy()]
         
     return W, D, tausY, tausN,muY,muN, is_converged
@@ -419,7 +415,6 @@ def em_tlasso_no_noise_with_mu(Y, T, l, W0, with_mu=True, corr=True):
         Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
 
         Ymuw = np.vstack(Ymuw)
-        print(abs(np.cov(Ymuw.T)).max())
         n = Ymuw.shape[0]
         print(n)
         Ymuwcov = (1 / (n - 1)) * Ymuw.T @ Ymuw  # np.cov(Ymuw.T)
@@ -460,6 +455,41 @@ def em_tlasso_no_noise_with_mu(Y, T, l, W0, with_mu=True, corr=True):
 
     return W, tausY, muY, is_converged
 
+def em_tlasso_N_noise_with_mu(Y, T, l, W0, with_mu=True, corr=True):
+    p = Y[0].shape[0]
+
+    muY = [np.array([0] * p) for i in range(len(Y))]
+    is_converged = False
+    W = W0
+    for j in range(T):
+        #print(f"Iteration: {j}")
+        # E-step
+        tausY = tau(Y, 3, p, muY, W, group=True)
+        # M-step
+        #print("M-step")
+        if with_mu:
+            muY = update_mu(Y, tausY)
+            # muN = update_mu(N, tausN)
+        Ymuw, Sigma_Y, Stdsi_Y = update_Sigma_mu(Y, tausY, mu=with_mu, group=True)
+
+        d_t = [(1 / (Ymuw[i].shape[0] * Ymuw[i].shape[1])) * np.sum(Ymuw[i] ** 2) for i in range(len(Y))]
+
+        # D_t is the inverse diagonal of d_t*I
+        W = [np.diag(np.array([1 / d_t[i]] * Ymuw[i].shape[1])) for i in range(len(Y))]
+        #print("Max eig", np.linalg.eigvals(W[0].copy() -W0[0].copy()).max())
+
+        if abs(np.linalg.eigvals(W[0].copy() - W0[0].copy()).max())<=1e-4:
+            is_converged=True
+            break
+        W0 = [W[0].copy()]
+
+        # Nmuw=[(N[i]*np.sqrt(tausN[i])).T for i in range(len(N))]
+
+        # d_t is a scalar variance
+
+        # D_t is the inverse diagonal of d_t*I
+
+    return W, tausY, muY, is_converged
 
 # def em_tlasso_noise_with_mu(Y, N, T, l, r, W0, D0, glasso=False, with_mu=True):
 #     p = Y[0].shape[0]

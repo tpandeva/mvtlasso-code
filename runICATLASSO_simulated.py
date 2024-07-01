@@ -14,7 +14,7 @@ from sklearn.decomposition import FastICA, PCA
 
 import torch.nn as nn
 import geotorch
-from model._tlasso import em_tlasso_no_noise_with_mu,em_tlasso_noise_with_mu
+from model._tlasso import em_tlasso_no_noise_with_mu,em_tlasso_noise_with_mu,em_tlasso_N_noise_with_mu
 from sklearn.utils.extmath import randomized_svd
 from scipy.sparse import coo_matrix
 
@@ -116,6 +116,140 @@ def whiten(X,n_components):
     return K,Kinv, XT
 
 
+def fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scaling=True, corr=True):
+    np.random.seed(seed)
+    num_views = len(ks)
+
+    L_t, D_t, Tau, adj_Wo = None, None, None, None
+
+    Xws, Wts = [], []
+    Ik, Ink = [], []
+    models = []
+    param_list = []
+    for i in range(num_views):
+        X = Xs[i]
+        adj = pickle.load(open(os.path.join(script_dir, "data/adj_simulated.pickle"), "rb"))
+        n = X.shape[1]
+
+        ica = FastICA(n_components=X.shape[1])
+        Xica = ica.fit_transform(X)
+
+        Xws.append(Xica)
+        Ik.append(np.diag(np.array([1] * params[i] + [0] * (n - params[i]))))
+        Ink.append(np.diag(np.array([0] * params[i] + [1] * (n - params[i]))))
+        models.append(TICA(Xica.shape[1], Xica.shape[1], scaling).to(device))
+        param_list += list(models[i].parameters())
+
+    optim = torch.optim.LBFGS(param_list, line_search_fn="strong_wolfe", max_iter=5000)
+
+
+    for t in range(T):
+
+        if L_t is None:
+
+            S_all = [Xws[i][:, :params[i]] for i in range(num_views)]
+            N_all = [Xws[i][:, params[i]:] for i in range(num_views)]
+            L_t = [np.eye(Xws[i].shape[0]) for i in range(num_views)]
+            D_t = [np.eye(Xws[i].shape[0]) for i in range(num_views)]
+
+            if adj_Wo is None:
+                adj_Wo = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wo[i][adj_Wo[i] != 0] = 1
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views):
+                print(adj_Wi[i][0, 0])
+                adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+            # L_t, D_t, tauZ, tauN, muY, muN
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(S_all, T, l, L_t, with_mu=False,
+                                                                      corr=corr)  # L_t, D_t, glasso=True, with_mu=False
+            muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+            D_t, tauN, _, _= em_tlasso_N_noise_with_mu(N_all, T, l, D_t, with_mu=False)
+            print("noise", D_t[0][0,0])
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+            #tauN = [np.array([1]*(n-params[i])) for i in range(num_views)]
+            Tau = [np.diag(np.concatenate((tauY[i],tauN[i]))) for i in range(num_views)]
+            #Tau = [np.diag(tauY[i]) for i in range(num_views)]
+
+        else:
+            for i in range(num_views):
+
+                for _ in range(1):
+
+                    D1 = Ik[i]
+                    D2 = Ink[i]
+                    if Tau is not None:
+                        D1 = Ik[i] @ Tau[i]
+                        D2 = Ink[i]@Tau[i]
+
+                    Z = torch.from_numpy(Xws[i]).float().to(device)
+
+                    D1_tensor = torch.from_numpy(D1).float().to(device)
+                    D2_tensor =  torch.from_numpy(D2).float().to(device)
+                    L_t_tensor = torch.from_numpy(L_t[i]).float().to(device)
+
+                    D_t_tensor =  torch.from_numpy(D_t[i]).float().to(device)
+
+                    def loss_closure():
+                        optim.zero_grad()
+
+                        ZQ = models[i](Z)
+                        ZQm = ZQ - muY_tensor[i][:, None]
+                        #ZQn = ZQ
+                        loss = torch.trace(D1_tensor @ (ZQm.T @ (
+                                    L_t_tensor @ ZQm))) +torch.trace(D2_tensor@(ZQm.T@D_t_tensor@ZQm))#
+                        if scaling: loss -= torch.linalg.slogdet(models[i].W.weight * torch.eye(Z.shape[1]))[1]
+
+                        loss.backward()
+                        return loss
+
+                    optim.step(loss_closure)
+
+            Z = [torch.from_numpy(Xws[i]).float().to(device) for i in range(num_views)]
+            Z_np = [models[i](Z[i]).detach().cpu().numpy()[:, :params[i]] for i in range(num_views)]
+            N_np = [models[i](Z[i]).detach().cpu().numpy()[:, params[i]:] for i in range(num_views)]
+
+            # Z_np = Xws
+
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(Z_np, 1, l, L_t, with_mu=False)
+            D_t, tauN, _, _ = em_tlasso_N_noise_with_mu(N_all, 1, l, D_t, with_mu=False)
+            print("noise", D_t[0][0, 0])
+            if is_converged:
+                break
+            muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+
+            Tau = [np.diag(np.concatenate((tauY[i],tauN[i]))) for i in range(num_views)]
+            #Tau = [np.diag(tauY[i]) for i in range(num_views)]
+
+    return L_t
+
+
 def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scaling=True, corr=True):
     np.random.seed(seed)
     num_views = len(ks)
@@ -132,7 +266,7 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         n = X.shape[1]
         # X = X[:,np.random.choice(n, size=int(n*0.95), replace=False)]
 
-        ica = FastICA(n_components=X.shape[0])
+        ica = FastICA(n_components=X.shape[1])
         Xica = ica.fit_transform(X)
 
         print(Xica.shape)
@@ -142,7 +276,7 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         models.append(TICA(Xica.shape[1], Xica.shape[1], scaling).to(device))
         param_list += list(models[i].parameters())
 
-    optim = torch.optim.LBFGS(param_list, line_search_fn="strong_wolfe", max_iter=100)
+    optim = torch.optim.LBFGS(param_list, line_search_fn="strong_wolfe", max_iter=50000)
 
     Wts = [np.eye(Xws[i].shape[1]) for i in range(num_views)]
     Q = None
@@ -152,12 +286,12 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
         if L_t is None:
 
             S_all = [Xws[i][:, :params[i]] for i in range(num_views)]
-            # S_all = np.hstack(S_all)
-            Z_all = [Xws[i][:,params[i]:] for i in range(num_views)]
+
+            Z_all = [Xws[i][:, params[i]:] for i in range(num_views)]
             L_t = [np.eye(Xws[i].shape[0]) for i in range(num_views)]
 
             # d_t is a scalar variance
-            d_t = [(1/Z_all[i].shape[0]*Z_all[i].shape[1])*np.sum(Z_all[i]**2) for i in range(num_views)]
+            d_t = [(1/(Z_all[i].shape[0]*Z_all[i].shape[1]))*np.sum(Z_all[i]**2) for i in range(num_views)]
             # D_t is the inverse diagonal of d_t*I
             D_t = [np.diag(np.array([1/d_t[i]]*Z_all[i].shape[0])) for i in range(num_views)]
             # D_t = [0.2*np.eye(Z_all[i].shape[0]) for i in range(num_views)]
@@ -177,10 +311,27 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
             adj_Wo = adj_Wi
             # L_t, D_t, tauZ, tauN, muY, muN
             L_old = L_t[0].copy()
-            L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(S_all, Z_all, 1, l,r, L_t, D_t, glasso=True, with_mu=False, corr=corr)
-            print("Max eig",np.linalg.eigvals(L_t[0].copy()-L_old[0].copy())[0])
+            # L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(S_all, Z_all, T, l,r, L_t, D_t, glasso=True, with_mu=False, corr=corr)
+            # print("Max eig",np.linalg.eigvals(L_t[0].copy()-L_old[0].copy())[0])
+            # muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+            #
+            # print("shape of mu", muY_tensor[0].shape)
+            # adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            # for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            # for i in range(num_views):
+            #     print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+            #           0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+            #           0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+            #           0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            # adj_Wo = adj_Wi
+            #
+            # Tau = [np.diag(np.concatenate((tauZ[i][ :params[i]],tauN[i]))) for i in range(num_views)]
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(S_all, T, l, L_t, with_mu=False,
+                                                                      corr=corr)  # L_t, D_t, glasso=True, with_mu=False
             muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
-            muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+            muN_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
 
             print("shape of mu", muY_tensor[0].shape)
             adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
@@ -193,73 +344,66 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
             # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
             adj_Wo = adj_Wi
 
-            Tau = [np.diag(np.concatenate((tauZ[i],tauN[i]))) for i in range(num_views)]
+            Tau = [np.diag(np.concatenate((tauY[i],np.array([1])))) for i in range(num_views)]
+            # Tau = [np.diag(tauY[i]) for i in range(num_views)]
+
+        else:
+            for i in range(num_views):
+
+                for _ in range(1):
+
+                    D1 = Ik[i]
+                    D2 = Ink[i]
+                    if Tau is not None:
+                        D1 =  Ik[i] @ Tau[i]
+                        D2 = Ink[i]@Tau[i]
+
+                    Z = torch.from_numpy(Xws[i]).float().to(device)
+
+                    D1_tensor = torch.from_numpy(D1).float().to(device)
+                    D2_tensor =  torch.from_numpy(D2).float().to(device)
+                    L_t_tensor = torch.from_numpy(L_t[i]).float().to(device)
+                    D_t_tensor =  torch.from_numpy(D_t[i]).float().to(device)
+
+                    def loss_closure():
+                        optim.zero_grad()
+
+                        ZQ = models[i](Z)
+                        ZQm = ZQ- muY_tensor[i][:, None]
+                        ZQn = ZQ - muN_tensor[i][:, None]
+                        loss = torch.trace(D1_tensor@(ZQm.T@(L_t_tensor@ZQm))) +torch.trace(D2_tensor@(ZQn.T@(D_t_tensor@ZQn)))#
+                        if scaling: loss -= torch.linalg.slogdet(models[i].W.weight * torch.eye(Z.shape[1]))[1]
+
+                        loss.backward()
+                        return loss
+
+                    optim.step(loss_closure)
+
+            Z = [torch.from_numpy(Xws[i]).float().to(device) for i in range(num_views)]
+            Z_np = [models[i](Z[i]).detach().cpu().numpy()[:, :params[i]] for i in range(num_views)]
+            # Z_np = Xws
+            N_np = [models[i](Z[i]).detach().cpu().numpy()[:, params[i]:] for i in range(num_views)]
+
+            L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(Z_np,N_np, 1, l,r, L_t,D_t, with_mu=False, corr=corr)
+            #is_converged = False
+            muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+
+            Tau = [np.diag(np.concatenate((tauZ[i][:params[i]],tauN[i]))) for i in range(num_views)]
+            if is_converged:
+                break
             #Tau = [np.diag(tauY[i]) for i in range(num_views)]
-
-        for i in range(num_views):
-
-            for _ in range(2):
-
-                D1 = np.sqrt(Ik[i])
-                D2 = np.sqrt(Ink[i])
-                if Tau is not None:
-                    D1 = np.sqrt(Ik[i] @ Tau[i])
-                    D2 = np.sqrt(Ink[i]@Tau[i])
-
-                Z = torch.from_numpy(Xws[i]).float().to(device)
-
-                D1_tensor = torch.from_numpy(D1).float().to(device)
-                D2_tensor =  torch.from_numpy(D2).float().to(device)
-                L_t_tensor = torch.from_numpy(L_t[i]).float().to(device)
-                D_t_tensor =  torch.from_numpy(D_t[i]).float().to(device)
-
-                def loss_closure():
-                    optim.zero_grad()
-
-                    ZQ = models[i](Z)
-                    ZQm = ZQ - muY_tensor[i][:, None]
-                    ZQn = ZQ - muN_tensor[i][:, None]
-                    loss = torch.trace(D1_tensor @ (ZQm.T @ (
-                                L_t_tensor @ ZQm)) @ D1_tensor) +torch.trace(D2_tensor@(ZQn.T@(D_t_tensor@ZQn))@D2_tensor)#
-                    if scaling: loss -= torch.linalg.slogdet(models[i].W.weight * torch.eye(Z.shape[1]))[1]
-
-                    loss.backward()
-                    return loss
-
-                optim.step(loss_closure)
-
-        Z = [torch.from_numpy(Xws[i] @ Wts[i]).float().to(device) for i in range(num_views)]
-        Z_np = [models[i](Z[i]).detach().cpu().numpy()[:, :params[i]] for i in range(num_views)]
-        # Z_np = Xws
-        N_np = [models[i](Z[i]).detach().cpu().numpy()[:, params[i]:] for i in range(num_views)]
-        # for i in range(num_views):
-        #     print(models[i].W.weight)
-        #     print(models[i].Q.weight)
-        #     print(Z_np[i].std(0))
-        #
-        L_old = L_t[0].copy()
-        L_t, D_t, tauZ, tauN, muY, muN, is_converged = em_tlasso_noise_with_mu(Z_np,N_np, 1, l,r, L_t,D_t, with_mu=False, corr=corr)
-        #print("Max eig", np.linalg.eigvals(L_t[0].copy() - L_old[0].copy())[0])
-
-
-        muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
-        muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
-
-        adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
-        for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
-        for i in range(num_views):
-            print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
-                  0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
-                  0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
-                  0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
-        # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
-        adj_Wo = adj_Wi
-
-        Tau = [np.diag(np.concatenate((tauZ[i],tauN[i]))) for i in range(num_views)]
-        if is_converged:
-            break
-        #Tau = [np.diag(tauY[i]) for i in range(num_views)]
-    if scaling: print(print(models[i].W.weight))
+        if scaling: print(print(models[i].W.weight))
     return L_t
 
 
@@ -281,7 +425,7 @@ def fit_ica_tlasso_no_noise(Xs, ks, device, T, l,r, to_whiten, seed=1, params=No
         adj = pickle.load(open(os.path.join(script_dir,"data/adj_simulated.pickle"),"rb"))
         n = X.shape[1]
 
-        ica = FastICA(n_components=X.shape[0])
+        ica = FastICA(n_components=X.shape[1])
         Xica = ica.fit_transform(X)
        
         Xws.append(Xica)
@@ -429,24 +573,7 @@ def main(cfg) -> None:
     Sigma = np.linalg.inv(Theta)
     #Xs = pickle.load(open(os.path.join(script_dir,"data/simulated.pickle"),"rb"))
     ks = cfg.k
-    # for X in Xs:
-    #
-    #     # dff = os.path.join(script_dir, df)
-    #     # X = pd.read_csv(dff, sep=",")
-    #     # X = X.drop(X.columns[0], axis=1)
-    #
-    #     if reduction:
-    #         if cfg.k is None:
-    #             ks.append(number_ICA_components(X))
-    #         else:
-    #             ks = cfg.k
-    #         params = None
-    #     else:
-    #         ks.append(X.shape[0])
-    #         params = cfg.k
-    #
-        # X = X.to_numpy() # maybe .T
-        # Xs.append(X)
+
     params = cfg.k
     adj_em = [0,0]
     adj = pickle.load(open(os.path.join(script_dir,"data/adj_simulated.pickle"),"rb"))
@@ -458,6 +585,7 @@ def main(cfg) -> None:
         Y1 = np.concatenate((S[:, :d1 // 2], Z[:, :d2 // 2]), axis=1)
         Y2 = np.concatenate((S[:, d1 // 2:], Z[:, d2 // 2:]), axis=1)
         A1 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
+       # A1[d1 // 2:,:] = 0.1*A1[d1 // 2:,:]
         A2 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
         # A[d1:,:] = 0.001*A[d1:,:]
         X1 = Y1 @ A1
@@ -466,10 +594,10 @@ def main(cfg) -> None:
        # X2 = Y2 @ A2
         Xs = [X1]
 
-        if d2 == 0:
+        if d2 == 0 or params[0]==(d1+d2)//2:
             Wi = fit_ica_tlasso_no_noise(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
         else:
-            Wi = fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
+            Wi = fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling, cfg.corr)
 
         adj_Wi = [abs(Wi[i].copy()) for i in range(2)]
         for i in range(1):

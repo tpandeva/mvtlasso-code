@@ -10,15 +10,15 @@ optim:
   epochs: 5000
   eps: 0.002
 file: "log"
-T: 50
-l: 0.1 #max 0.3  # this is the glasso
+T: 100
+l: 0.07 #max 0.3  # this is the glasso
 r: 0.1 # this is for the alignment penalty
 data_file: ['data/dataset2.csv','data/dataset1.csv'] # '/var/scratch/tpandeva/siica/data/dataset1.csv'
 alias: "X12_sim"
-k: [50] # 68 for dataset2, 46 for dataset1, 151 for dataset 3
-d1: 100
+k: [70] # 68 for dataset2, 46 for dataset1, 151 for dataset 3
+d1: 200
 d2: 0
-n: 100
+n: 200
 runs: 100
 whiten: false
 reduction: false
@@ -26,4 +26,4 @@ start: 0
 end: 20
 scaling: false
 sigma: 1
-corr: false
+corr: true

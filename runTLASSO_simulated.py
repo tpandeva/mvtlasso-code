@@ -177,7 +177,7 @@ def main(cfg) -> None:
         #Y2 = np.concatenate((S[:, d1 // 2:], Z[:, d2 // 2:]), axis=1)
         A1 = np.random.normal(loc=1, scale=0.1, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
         #A2 = np.random.normal(loc=1, scale=1.0, size=((d1 + d2) // 2) ** 2).reshape(((d1 + d2) // 2, (d1 + d2) // 2))
-
+        #A1[d1 // 2:, :] = 0.1 * A1[d1 // 2:, :]
         # A[d1:,:] = 0.001*A[d1:,:]
         X1 = Y1 @ A1
         if d2 == 0:
