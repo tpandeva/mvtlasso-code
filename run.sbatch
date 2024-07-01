@@ -22,6 +22,6 @@ e=99
 m=$(($1+1))
 #python runICATLASSO_simulated.py l=$1 alias="X12_simulated_icatlasso_n_100_no_scaling_no_corr" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
 python runTLASSO_simulated.py l=$1 alias="X12_simulated_tlasso_n_100_no_scaling_no_corr_with_mu" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
-python runTLASSO_simulated.py l=$m alias="X12_simulated_tlasso_n_100_no_scaling_no_corr" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
+python runTLASSO_simulated.py l=$m alias="X12_simulated_tlasso_n_100_no_scaling_no_corr_with_mu" start=$s end=$e scaling=true corr=false scaling=false n=100 d1=100 d2=0 k="[50]"&
 
 wait
