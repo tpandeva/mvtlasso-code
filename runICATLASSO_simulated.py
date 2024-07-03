@@ -199,7 +199,9 @@ def fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten, adj, seed=1, params=
                     D1_tensor = torch.from_numpy(D1).float().to(device)
                     D2_tensor = torch.from_numpy(D2).float().to(device)
                     L_t_tensor = torch.from_numpy(L_t[i]).float().to(device)
-
+                    l = L_t[i].max()
+                    if l<=1e6:
+                        l=1
                     D_t_tensor = torch.from_numpy(D_t[i]).float().to(device)
 
                     def loss_closure():
@@ -208,8 +210,8 @@ def fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten, adj, seed=1, params=
                         ZQ = models[i](Z)
                         ZQm = ZQ - muY_tensor[i][:, None]
                         # ZQn = ZQ
-                        loss = torch.trace(D1_tensor @ (ZQm.T @ (
-                                L_t_tensor @ ZQm))) + torch.trace(D2_tensor @ (ZQm.T @ D_t_tensor @ ZQm))  #
+                        loss = (1/l)*(torch.trace(D1_tensor @ (ZQm.T @ (
+                                L_t_tensor @ ZQm))) + torch.trace(D2_tensor @ (ZQm.T @ D_t_tensor @ ZQm)))  #
                         if scaling: loss -= torch.linalg.slogdet(models[i].W.weight * torch.eye(Z.shape[1]))[1]
 
                         loss.backward()
@@ -552,7 +554,7 @@ def main(cfg) -> None:
 
     tprs, fprs = [], []
     for s in range(cfg.start, cfg.end):
-        try:
+        #try:
             n = cfg.n
             d1 = cfg.d1
             d2 = cfg.d2
@@ -603,14 +605,14 @@ def main(cfg) -> None:
                 fprs.append(((adj_Wi[i] - adj_Wi[i] * adj).sum()) / ((1 - adj).sum()))
             del Wi, adj_Wi
 
-        except Exception as e:
-            print("Error:", e)
+        #except Exception as e:
+        # print("Error:", e)
 
-        print(f"Mean TPR: {np.mean(np.array(tprs))}, Mean FPR: {np.mean(np.array(fprs))}")
-        open_file = open(os.path.join(script_dir, f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"),
-                         "wb")
-        pickle.dump([tprs, fprs], open_file)
-        open_file.close()
+            print(f"Mean TPR: {np.mean(np.array(tprs))}, Mean FPR: {np.mean(np.array(fprs))}")
+            open_file = open(os.path.join(script_dir, f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"),
+                             "wb")
+            pickle.dump([tprs, fprs], open_file)
+            open_file.close()
 
 
 if __name__ == '__main__':
