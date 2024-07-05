@@ -14,7 +14,7 @@ from sklearn.decomposition import FastICA, PCA
 
 import torch.nn as nn
 import geotorch
-from model._tlasso import em_tlasso_noise_with_mu
+from model._tlasso import em_tlasso_noise_with_mu, em_tlasso_N_noise_with_mu,em_tlasso_no_noise_with_mu
 from sklearn.utils.extmath import randomized_svd
 from scipy.sparse import coo_matrix
 
@@ -86,6 +86,141 @@ def whiten(X,n_components):
 
 
     return K,Kinv, XT
+
+def fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten, adj, seed=1, params=None, scaling=True, corr=True):
+    np.random.seed(seed)
+    num_views = len(ks)
+
+    L_t, D_t, Tau, adj_Wo = None, None, None, None
+
+    Xws, Wts = [], []
+    Ik, Ink = [], []
+    models = []
+    param_list = []
+    for i in range(num_views):
+        X = Xs[i]
+        # adj = pickle.load(open(os.path.join(script_dir, "data/adj_simulated.pickle"), "rb"))
+        n = X.shape[1]
+
+        ica = FastICA(n_components=X.shape[1])
+        Xica = ica.fit_transform(X)
+
+        Xws.append(Xica)
+        Ik.append(np.diag(np.array([1] * params[i] + [0] * (n - params[i]))))
+        Ink.append(np.diag(np.array([0] * params[i] + [1] * (n - params[i]))))
+        models.append(TICA(Xica.shape[1], Xica.shape[1], scaling).to(device))
+        param_list += list(models[i].parameters())
+
+    optim = torch.optim.LBFGS(param_list, line_search_fn="strong_wolfe", max_iter=5000)
+
+    for t in range(T):
+
+        if L_t is None:
+
+            S_all = [Xws[i][:, :params[i]] for i in range(num_views)]
+            N_all = [Xws[i][:, params[i]:] for i in range(num_views)]
+            L_t = [np.eye(Xws[i].shape[0]) for i in range(num_views)]
+            D_t = [np.eye(Xws[i].shape[0]) for i in range(num_views)]
+
+            if adj_Wo is None:
+                adj_Wo = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wo[i][adj_Wo[i] != 0] = 1
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views):
+                print(adj_Wi[i][0, 0])
+                adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+            # L_t, D_t, tauZ, tauN, muY, muN
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(S_all, 2, l, L_t, with_mu=False,
+                                                                      corr=corr)  # L_t, D_t, glasso=True, with_mu=False
+            muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+            D_t, tauN, _, _ = em_tlasso_N_noise_with_mu(N_all, T, l, D_t, with_mu=False)
+            print("noise", D_t[0][0, 0])
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+            # tauN = [np.array([1]*(n-params[i])) for i in range(num_views)]
+            Tau = [np.diag(np.concatenate((tauY[i], tauN[i]))) for i in range(num_views)]
+            # Tau = [np.diag(tauY[i]) for i in range(num_views)]
+
+        else:
+            for i in range(num_views):
+
+                for _ in range(1):
+
+                    D1 = Ik[i]
+                    D2 = Ink[i]
+                    if Tau is not None:
+                        D1 = Ik[i] @ Tau[i]
+                        D2 = Ink[i] @ Tau[i]
+
+                    Z = torch.from_numpy(Xws[i]).float().to(device)
+
+                    D1_tensor = torch.from_numpy(D1).float().to(device)
+                    D2_tensor = torch.from_numpy(D2).float().to(device)
+                    L_t_tensor = torch.from_numpy(L_t[i]).float().to(device)
+                    la = L_t[i].max()
+                    if la<=1e6:
+                        la=1
+                    D_t_tensor = torch.from_numpy(D_t[i]).float().to(device)
+
+                    def loss_closure():
+                        optim.zero_grad()
+
+                        ZQ = models[i](Z)
+                        ZQm = ZQ - muY_tensor[i][:, None]
+                        # ZQn = ZQ
+
+                        loss = (1/la)*(torch.trace(D1_tensor @ (ZQm.T @ (
+                                L_t_tensor @ ZQm))) + torch.trace(D2_tensor @ (ZQm.T @ D_t_tensor @ ZQm)))  #
+                        if scaling: loss -= torch.linalg.slogdet(models[i].W.weight * torch.eye(Z.shape[1]))[1]
+
+                        loss.backward()
+                        return loss
+
+                    optim.step(loss_closure)
+
+            Z = [torch.from_numpy(Xws[i]).float().to(device) for i in range(num_views)]
+            Z_np = [models[i](Z[i]).detach().cpu().numpy()[:, :params[i]] for i in range(num_views)]
+            N_np = [models[i](Z[i]).detach().cpu().numpy()[:, params[i]:] for i in range(num_views)]
+
+            # Z_np = Xws
+
+            L_t, tauY, muY, is_converged = em_tlasso_no_noise_with_mu(Z_np, 1, l, L_t, with_mu=False)
+            D_t, tauN, _, _ = em_tlasso_N_noise_with_mu(N_all, 1, l, D_t, with_mu=False)
+            print("noise", D_t[0][0, 0])
+            if is_converged:
+                break
+            muY_tensor = [torch.from_numpy(muY[i]).float().to(device) for i in range(num_views)]
+            # muN_tensor = [torch.from_numpy(muN[i]).float().to(device) for i in range(num_views)]
+
+            adj_Wi = [abs(L_t[i].copy()) for i in range(num_views)]
+            for i in range(num_views): adj_Wi[i][adj_Wi[i] != 0] = 1
+            for i in range(num_views):
+                print("Old Edges:", 0.5 * (adj_Wo[i].sum() - adj_Wi[i].shape[0]), "Edges:",
+                      0.5 * (adj_Wi[i].sum() - adj_Wi[i].shape[0]), "Intersection:",
+                      0.5 * ((adj_Wo[i] * adj_Wi[i]).sum() - adj_Wi[i].shape[0]), "TP:",
+                      0.5 * ((adj * adj_Wi[i]).sum() - adj_Wi[i].shape[0]))
+            # print("Intersection between views", 0.5*((adj_Wi[0]*adj_Wi[1]).sum()-adj_Wi[1].shape[0]) )
+            adj_Wo = adj_Wi
+
+            Tau = [np.diag(np.concatenate((tauY[i], tauN[i]))) for i in range(num_views)]
+            # Tau = [np.diag(tauY[i]) for i in range(num_views)]
+
+    return L_t
 
 
 
@@ -273,8 +408,8 @@ def main(cfg) -> None:
 
     print("shape", Xs[0].shape)
     for s in range(cfg.start,cfg.end):
-        try:
-            Wi=fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, s, params, cfg.scaling)
+        #try:
+            Wi=fit_ica_tlasso_test(Xs, ks, device, T, l, r, to_whiten,adj, s, params, cfg.scaling, cfg.corr)
 
 
             adj_Wi = [abs(Wi[i].copy()) for i in range(2)]
@@ -294,14 +429,15 @@ def main(cfg) -> None:
 
 
 
-        except Exception as e:
-            print("Error:",e)
-        
+        # except Exception as e:
+        #     print("Error:",e)
+        #
 
+        #
+        # open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
+        # pickle.dump( adj_em, open_file)
+        # open_file.close()
 
-        open_file = open(os.path.join(script_dir,f"{path}/res_{store_as_alias}_{l}_{cfg.start}_{cfg.end}.pickle"), "wb")
-        pickle.dump( adj_em, open_file)
-        open_file.close()
 
 
 if __name__ == '__main__':
