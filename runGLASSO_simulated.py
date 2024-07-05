@@ -95,7 +95,7 @@ def fit_ica_tlasso(Xs, ks, device, T, l, r, to_whiten, seed=1, params=None, scal
 
 
     Xg = np.hstack(Xs)
-    L_t = run_glasso(np.corrcoef(Xg),l)
+    L_t = run_glasso(np.cov(Xg),l)
     return [L_t,L_t]
 
 
